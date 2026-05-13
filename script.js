@@ -38,6 +38,24 @@ let renderGridSize = 20;
 let mapSize = 50; // Updated by server on join
 let serverObstacles = [];
 
+// Interpolation variables
+let previousGameState = null;
+let lastUpdateTime = 0;
+let previousUpdateTime = 0;
+
+function lerpWrap(start, end, t, max) {
+    if (start === undefined || end === undefined) return end;
+    let diff = end - start;
+    if (Math.abs(diff) > max / 2) {
+        if (diff > 0) diff -= max;
+        else diff += max;
+    }
+    let val = start + diff * t;
+    if (val < 0) val += max;
+    if (val >= max) val -= max;
+    return val;
+}
+
 // Initialize Canvas
 function resizeCanvas() {
   const wrapper = document.querySelector(".canvas-wrapper");
@@ -116,6 +134,10 @@ socket.on("killEvent", ({ killer, victim, color }) => {
 });
 
 socket.on("gameUpdate", (state) => {
+  previousGameState = gameState;
+  previousUpdateTime = lastUpdateTime || Date.now() - 130;
+  lastUpdateTime = Date.now();
+
   gameState = state;
   gameState.mapSize = mapSize;
   gameState.obstacles = serverObstacles;
@@ -285,6 +307,14 @@ function updateLeaderboard() {
 function draw() {
   if (!gameState) return;
 
+  // Calculate interpolation progress
+  const now = Date.now();
+  let progress = 1;
+  const tickDuration = lastUpdateTime - previousUpdateTime;
+  if (previousGameState && tickDuration > 0) {
+      progress = Math.min(1, (now - lastUpdateTime) / tickDuration);
+  }
+
   // Determine grid size based on viewport - we want to show ~25 tiles across the smallest dimension
   renderGridSize = Math.max(15, Math.min(canvas.width, canvas.height) / 25);
 
@@ -294,8 +324,17 @@ function draw() {
 
   if (me && me.alive) {
       const head = me.snake[0];
-      targetOffsetX = canvas.width / 2 - (head.x * renderGridSize + renderGridSize / 2);
-      targetOffsetY = canvas.height / 2 - (head.y * renderGridSize + renderGridSize / 2);
+      let headX = head.x;
+      let headY = head.y;
+      
+      if (previousGameState && previousGameState.players[myId] && previousGameState.players[myId].alive) {
+          const prevHead = previousGameState.players[myId].snake[0];
+          headX = lerpWrap(prevHead.x, head.x, progress, gameState.mapSize);
+          headY = lerpWrap(prevHead.y, head.y, progress, gameState.mapSize);
+      }
+
+      targetOffsetX = canvas.width / 2 - (headX * renderGridSize + renderGridSize / 2);
+      targetOffsetY = canvas.height / 2 - (headY * renderGridSize + renderGridSize / 2);
   } else {
       // Center of map if dead or spectating
       targetOffsetX = canvas.width / 2 - (gameState.mapSize * renderGridSize) / 2;
@@ -389,14 +428,30 @@ function draw() {
       ctx.fill();
     });
   }
-
-  // Draw Players
+   // Draw Players
   Object.values(gameState.players).forEach((player) => {
     if (!player.alive) return;
 
     player.snake.forEach((segment, index) => {
       const isHead = index === 0;
       const isMe = player.id === myId;
+
+      let drawX = segment.x;
+      let drawY = segment.y;
+
+      // Interpolate position
+      if (previousGameState && previousGameState.players[player.id] && previousGameState.players[player.id].alive) {
+          const prevSnake = previousGameState.players[player.id].snake;
+          if (prevSnake && prevSnake[index]) {
+              drawX = lerpWrap(prevSnake[index].x, segment.x, progress, gameState.mapSize);
+              drawY = lerpWrap(prevSnake[index].y, segment.y, progress, gameState.mapSize);
+          } else if (prevSnake && prevSnake.length > 0) {
+              // For new segments grown this tick, interpolate from the last known tail position
+              const lastPrevSegment = prevSnake[prevSnake.length - 1];
+              drawX = lerpWrap(lastPrevSegment.x, segment.x, progress, gameState.mapSize);
+              drawY = lerpWrap(lastPrevSegment.y, segment.y, progress, gameState.mapSize);
+          }
+      }
 
       // Only add expensive shadow to the head when boosting to save massive FPS
       ctx.shadowBlur = (isHead && player.isBoosting) ? 15 : 0;
@@ -405,8 +460,8 @@ function draw() {
 
       ctx.beginPath();
       ctx.roundRect(
-        segment.x * renderGridSize + 1,
-        segment.y * renderGridSize + 1,
+        drawX * renderGridSize + 1,
+        drawY * renderGridSize + 1,
         renderGridSize - 2,
         renderGridSize - 2,
         2,
@@ -417,8 +472,8 @@ function draw() {
         ctx.fillStyle = "white";
         const eyeSize = renderGridSize / 5;
         ctx.fillRect(
-          segment.x * renderGridSize + renderGridSize / 2 - eyeSize / 2,
-          segment.y * renderGridSize + renderGridSize / 2 - eyeSize / 2,
+          drawX * renderGridSize + renderGridSize / 2 - eyeSize / 2,
+          drawY * renderGridSize + renderGridSize / 2 - eyeSize / 2,
           eyeSize,
           eyeSize,
         );
@@ -430,8 +485,8 @@ function draw() {
         ctx.textAlign = "center";
         ctx.fillText(
           player.nickname,
-          segment.x * renderGridSize + renderGridSize / 2,
-          segment.y * renderGridSize - 8,
+          drawX * renderGridSize + renderGridSize / 2,
+          drawY * renderGridSize - 8,
         );
 
         // Boost effect
@@ -440,8 +495,8 @@ function draw() {
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(
-            segment.x * renderGridSize + renderGridSize / 2,
-            segment.y * renderGridSize + renderGridSize / 2,
+            drawX * renderGridSize + renderGridSize / 2,
+            drawY * renderGridSize + renderGridSize / 2,
             renderGridSize,
             0,
             Math.PI * 2,
