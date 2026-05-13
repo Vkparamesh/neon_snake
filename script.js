@@ -420,6 +420,45 @@ function draw() {
     });
 
     ctx.restore();
+
+    // Draw Minimap
+    const minimapSize = Math.min(120, canvas.width / 3);
+    const minimapPadding = 15;
+    const minimapX = canvas.width - minimapSize - minimapPadding;
+    const minimapY = minimapPadding;
+    const scale = minimapSize / gameState.mapSize;
+
+    // Minimap Background
+    ctx.fillStyle = "rgba(10, 10, 12, 0.8)";
+    ctx.strokeStyle = "rgba(0, 242, 255, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
+    ctx.strokeRect(minimapX, minimapY, minimapSize, minimapSize);
+
+    // Minimap Foods
+    ctx.fillStyle = "#ff007a";
+    if (gameState.foods) {
+        gameState.foods.forEach(f => {
+            ctx.fillRect(minimapX + f.x * scale, minimapY + f.y * scale, scale, scale);
+        });
+    }
+
+    // Minimap Obstacles
+    ctx.fillStyle = "#ff8800";
+    if (gameState.obstacles) {
+        gameState.obstacles.forEach(o => {
+            ctx.fillRect(minimapX + o.x * scale, minimapY + o.y * scale, scale, scale);
+        });
+    }
+
+    // Minimap Players
+    Object.values(gameState.players).forEach(p => {
+        if (!p.alive) return;
+        ctx.fillStyle = p.id === myId ? "#fff" : p.color;
+        p.snake.forEach(segment => {
+            ctx.fillRect(minimapX + segment.x * scale, minimapY + segment.y * scale, scale, scale);
+        });
+    });
 }
 
 // Mobile Control Event Listeners

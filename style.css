@@ -454,6 +454,7 @@ kbd {
     padding: 0.5rem 1rem;
     width: 100%;
     z-index: 30;
+    flex-direction: row-reverse;
 }
 
 .d-pad {
