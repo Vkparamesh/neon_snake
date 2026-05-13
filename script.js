@@ -337,11 +337,29 @@ function draw() {
             
             ctx.shadowBlur = isHead ? (player.isBoosting ? 20 : 10) : 0;
             ctx.shadowColor = player.color;
-            ctx.fillStyle = isHead ? player.color : `${player.color}99`;
-
+            
+            // Use full color for the entire body
+            ctx.fillStyle = player.color;
             ctx.beginPath();
             ctx.arc(segment.x, segment.y, 15, 0, Math.PI * 2); // 15 is SNAKE_RADIUS
             ctx.fill();
+
+            // Add pattern to body segments
+            if (!isHead) {
+                if (i % 2 === 0) {
+                    // Dark inner circle
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+                    ctx.beginPath();
+                    ctx.arc(segment.x, segment.y, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Bright inner dot
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+                    ctx.beginPath();
+                    ctx.arc(segment.x, segment.y, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
 
             if (isHead) {
                 // Draw Eyes
