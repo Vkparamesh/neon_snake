@@ -454,7 +454,6 @@ kbd {
     padding: 0.5rem 1rem;
     width: 100%;
     z-index: 30;
-    flex-direction: row-reverse;
 }
 
 .d-pad {
@@ -571,28 +570,19 @@ kbd {
 
 @media (max-width: 480px) {
     .glitch {
-        font-size: 1.2rem;
-        letter-spacing: 2px;
-    }
-
-    .stat-label {
-        font-size: 0.55rem;
-    }
-
-    .stat-value {
-        font-size: 1rem;
-    }
-
-    #overlay-title {
         font-size: 1.5rem;
     }
 
-    #overlay-msg {
-        font-size: 0.8rem;
+    .stat-value {
+        font-size: 1.2rem;
+    }
+
+    #overlay-title {
+        font-size: 2rem;
     }
 
     .join-content {
-        padding: 1.2rem;
+        padding: 1.5rem;
     }
 
     .ctrl-btn {
@@ -603,7 +593,6 @@ kbd {
     .boost-btn {
         width: 80px;
         height: 80px;
-        font-size: 0.75rem;
     }
 }
 

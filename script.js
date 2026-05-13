@@ -140,14 +140,7 @@ socket.on("gameUpdate", (state) => {
 // Particle Animation Loop
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    draw(); // Draw game state
-    
-    // Update and Draw Particles
-    particles = particles.filter(p => p.life > 0);
-    particles.forEach(p => {
-        p.update();
-        p.draw(ctx);
-    });
+    draw(); // Draw game state and particles
     
     requestAnimationFrame(animate);
 }
@@ -382,10 +375,19 @@ function draw() {
         }
     });
 
+    // Update and Draw Particles
+    particles = particles.filter(p => p.life > 0);
+    particles.forEach(p => {
+        p.update();
+        p.draw(ctx);
+    });
+
+    ctx.restore();
+
     // Draw Virtual Joystick
     if (joystickActive) {
         ctx.beginPath();
-        ctx.arc(joystickBaseX + cameraX, joystickBaseY + cameraY, 50, 0, Math.PI * 2);
+        ctx.arc(joystickBaseX, joystickBaseY, 50, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -393,12 +395,10 @@ function draw() {
         ctx.beginPath();
         const me = gameState.players[myId];
         const angle = me ? me.targetAngle : 0;
-        ctx.arc(joystickBaseX + cameraX + Math.cos(angle) * 30, joystickBaseY + cameraY + Math.sin(angle) * 30, 20, 0, Math.PI * 2);
+        ctx.arc(joystickBaseX + Math.cos(angle) * 30, joystickBaseY + Math.sin(angle) * 30, 20, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0, 242, 255, 0.5)";
         ctx.fill();
     }
-
-    ctx.restore();
 }
 
 // --- Smooth Movement Input ---
