@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Snake | Ultimate Retro Experience</title>
+    <meta name="description" content="Experience the classic Snake game with a modern neon twist. Built with high-performance JavaScript and premium CSS aesthetics.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="background-glow"></div>
+    
+    <main class="game-container hidden" id="game-main">
+        <header class="game-header">
+            <h1 class="glitch" data-text="NEON SNAKE">NEON SNAKE</h1>
+            <div class="stats-panel">
+                <div class="stat-item">
+                    <span class="stat-label">SCORE</span>
+                    <span id="current-score" class="stat-value">000</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">BEST</span>
+                    <span id="high-score" class="stat-value">000</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">KILLS</span>
+                    <span id="kill-count" class="stat-value">0</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="canvas-wrapper">
+            <canvas id="game-canvas"></canvas>
+            
+            <div id="leaderboard" class="leaderboard-panel">
+                <div class="leader-header">
+                    <h3>ARENA KINGS</h3>
+                    <div class="leader-titles">
+                        <span>NAME</span>
+                        <div class="leader-stats-header">
+                            <span>K</span>
+                            <span>F</span>
+                            <span>S</span>
+                        </div>
+                    </div>
+                </div>
+                <ul id="leaderboard-list"></ul>
+            </div>
+
+            <div id="kill-feed" class="kill-feed"></div>
+            
+            <div id="overlay" class="overlay">
+                <div class="overlay-content">
+                    <h2 id="overlay-title">READY?</h2>
+                    <p id="overlay-msg">Press SPACE or START to begin</p>
+                    <button id="start-btn" class="primary-btn">START MISSION</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="mobile-controls" class="mobile-controls">
+            <div class="d-pad">
+                <button id="ctrl-up" class="ctrl-btn up"><svg viewBox="0 0 24 24"><path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z"/></svg></button>
+                <div class="d-pad-mid">
+                    <button id="ctrl-left" class="ctrl-btn left"><svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg></button>
+                    <button id="ctrl-right" class="ctrl-btn right"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></button>
+                </div>
+                <button id="ctrl-down" class="ctrl-btn down"><svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg></button>
+            </div>
+            <button id="ctrl-boost" class="boost-btn">BOOST</button>
+        </div>
+
+        <footer class="game-controls">
+            <div class="control-hints">
+                <span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> Move</span>
+                <span><kbd>SHIFT</kbd> Turbo Boost</span>
+                <span><kbd>SPACE</kbd> Pause/Restart</span>
+            </div>
+        </footer>
+    </main>
+
+    <div id="join-screen" class="join-screen">
+        <div class="join-content">
+            <h1 class="glitch" data-text="NEON SNAKE">NEON SNAKE</h1>
+            <p>Enter your alias and password to join</p>
+            <input type="text" id="username-input" maxlength="15" placeholder="NICKNAME" autocomplete="off">
+            <input type="password" id="password-input" placeholder="PASSWORD" autocomplete="off">
+            <p id="join-error" class="error-text hidden"></p>
+            <button id="join-btn" class="primary-btn">JOIN ARENA</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
