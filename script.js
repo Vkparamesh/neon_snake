@@ -422,8 +422,10 @@ function draw() {
     ctx.restore();
 
     // Draw Minimap
-    const minimapSize = Math.min(120, canvas.width / 3);
-    const minimapPadding = 15;
+    // Make minimap smaller on mobile (max 80px) and a bit larger on desktop (max 120px)
+    const maxMinimapSize = canvas.width < 500 ? 75 : 120;
+    const minimapSize = Math.min(maxMinimapSize, canvas.width / 4);
+    const minimapPadding = 10;
     const minimapX = canvas.width - minimapSize - minimapPadding;
     const minimapY = minimapPadding;
     const scale = minimapSize / gameState.mapSize;
