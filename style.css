@@ -450,13 +450,9 @@ kbd {
 .mobile-controls {
     display: none;
     justify-content: space-between;
-    align-items: flex-end;
-    padding: 1rem;
-    position: absolute;
-    bottom: 2rem;
-    left: 0;
+    align-items: center;
+    padding: 0.5rem 1rem;
     width: 100%;
-    pointer-events: none;
     z-index: 30;
 }
 
@@ -464,35 +460,36 @@ kbd {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 5px;
-    pointer-events: auto;
+    gap: 8px;
 }
 
 .d-pad-mid {
     display: flex;
-    gap: 5px;
+    gap: 30px; /* Space out the left/right buttons to leave room for thumb */
 }
 
 .ctrl-btn {
-    width: 60px;
-    height: 60px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    width: 65px;
+    height: 65px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
     color: white;
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
-    backdrop-filter: blur(5px);
-    transition: all 0.2s ease;
+    backdrop-filter: blur(10px);
+    transition: all 0.1s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .ctrl-btn svg {
-    width: 30px;
-    height: 30px;
+    width: 35px;
+    height: 35px;
     fill: currentColor;
-    opacity: 0.7;
+    opacity: 0.9;
 }
 
 .ctrl-btn:active {
@@ -502,22 +499,23 @@ kbd {
 }
 
 .boost-btn {
-    width: 80px;
-    height: 80px;
+    width: 90px;
+    height: 90px;
     background: linear-gradient(135deg, var(--accent-neon), var(--secondary-neon));
     border: none;
     border-radius: 50%;
     color: white;
     font-weight: 800;
-    font-size: 0.8rem;
+    font-size: 1rem;
     cursor: pointer;
-    pointer-events: auto;
     box-shadow: 0 0 20px rgba(255, 0, 122, 0.4);
-    transition: all 0.2s ease;
+    transition: all 0.1s ease;
     display: flex;
     justify-content: center;
     align-items: center;
     text-shadow: 0 0 10px rgba(0,0,0,0.5);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .boost-btn:active {
@@ -535,28 +533,30 @@ kbd {
 }
 
 @media (max-width: 768px) {
+    body, .game-container {
+        height: 100dvh;
+        padding: 0.5rem;
+    }
+
     .game-header {
-        flex-direction: column;
+        flex-direction: row;
         gap: 0.5rem;
+        flex-wrap: wrap;
     }
     
     .stats-panel {
         width: 100%;
-        justify-content: space-around;
+        justify-content: space-between;
     }
 
+    /* Hide leaderboard on mobile to maximize canvas space */
     .leaderboard-panel {
-        position: relative;
-        top: 0;
-        right: 0;
-        width: 100%;
-        max-height: 150px;
-        overflow-y: auto;
-        margin-top: 10px;
+        display: none;
     }
 
     .canvas-wrapper {
         flex: 1;
+        min-height: 0; /* Important for flex child to shrink properly */
     }
     
     .mobile-controls {
@@ -586,13 +586,13 @@ kbd {
     }
 
     .ctrl-btn {
-        width: 50px;
-        height: 50px;
+        width: 55px;
+        height: 55px;
     }
 
     .boost-btn {
-        width: 70px;
-        height: 70px;
+        width: 80px;
+        height: 80px;
     }
 }
 
