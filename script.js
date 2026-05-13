@@ -32,40 +32,15 @@ let respawnTimer = null;
 let particles = [];
 let previousFoods = [];
 let previousAliveStates = {};
-let cameraOffsetX = 0;
-let cameraOffsetY = 0;
-let renderGridSize = 20;
-let mapSize = 50; // Updated by server on join
-let serverObstacles = [];
-
-// Interpolation variables
-let previousGameState = null;
-let lastUpdateTime = 0;
-let previousUpdateTime = 0;
-
-function lerpWrap(start, end, t, max) {
-    if (start === undefined || end === undefined) return end;
-    let diff = end - start;
-    if (Math.abs(diff) > max / 2) {
-        if (diff > 0) diff -= max;
-        else diff += max;
-    }
-    let val = start + diff * t;
-    if (val < 0) val += max;
-    if (val >= max) val -= max;
-    return val;
-}
 
 // Initialize Canvas
 function resizeCanvas() {
   const wrapper = document.querySelector(".canvas-wrapper");
   if (!wrapper) return;
   
-  // Use a small delay to ensure clientWidth/Height are updated
   setTimeout(() => {
-    canvas.width = wrapper.clientWidth - 10;
-    canvas.height = wrapper.clientHeight - 10;
-    
+    canvas.width = wrapper.clientWidth;
+    canvas.height = wrapper.clientHeight;
     if (gameState) draw();
   }, 50);
 }
@@ -108,12 +83,9 @@ socket.on("authError", (msg) => {
   showError(msg);
 });
 
-socket.on("joined", ({ id, color, obstacles, mapSize: serverMapSize }) => {
+socket.on("joined", ({ id, color }) => {
   myId = id;
   myColor = color;
-  serverObstacles = obstacles || [];
-  mapSize = serverMapSize || 50;
-  
   joinScreen.classList.add("hidden");
   gameMain.classList.remove("hidden");
   joinError.classList.add("hidden");
@@ -134,15 +106,8 @@ socket.on("killEvent", ({ killer, victim, color }) => {
 });
 
 socket.on("gameUpdate", (state) => {
-  previousGameState = gameState;
-  previousUpdateTime = lastUpdateTime || Date.now() - 130;
-  lastUpdateTime = Date.now();
-
   gameState = state;
-  gameState.mapSize = mapSize;
-  gameState.obstacles = serverObstacles;
-  
-  if (canvas.width === 0) resizeCanvas();
+  if (canvas.width === 0) resizeCanvas(state.mapSize);
 
   const me = state.players[myId];
   if (me) {
@@ -178,14 +143,11 @@ function animate() {
     draw(); // Draw game state
     
     // Update and Draw Particles
-    ctx.save();
-    ctx.translate(cameraOffsetX, cameraOffsetY);
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => {
         p.update();
         p.draw(ctx);
     });
-    ctx.restore();
     
     requestAnimationFrame(animate);
 }
@@ -211,18 +173,15 @@ class Particle {
     }
 
     draw(ctx) {
-        // FAST GLOW: Draw a larger semi-transparent circle instead of using slow shadowBlur
-        ctx.fillStyle = this.color;
-        
-        ctx.globalAlpha = this.life * 0.3;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
-        ctx.fill();
-
+        ctx.save();
         ctx.globalAlpha = this.life;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.fillStyle = this.color;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -233,18 +192,12 @@ function createExplosion(x, y, color, count = 15) {
 }
 
 function detectEffects(state) {
-    // renderGridSize is managed globally by draw()
-
     // Food Eaten Detection
     if (previousFoods.length > 0) {
         previousFoods.forEach(prevFood => {
-            const isStillThere = state.foods.some(f => f.x === prevFood.x && f.y === prevFood.y);
+            const isStillThere = state.foods.some(f => f.id === prevFood.id);
             if (!isStillThere) {
-                createExplosion(
-                    prevFood.x * renderGridSize + renderGridSize / 2,
-                    prevFood.y * renderGridSize + renderGridSize / 2,
-                    '#fff'
-                );
+                createExplosion(prevFood.x, prevFood.y, '#fff');
             }
         });
     }
@@ -253,13 +206,8 @@ function detectEffects(state) {
     // Player Death Detection
     Object.values(state.players).forEach(p => {
         if (previousAliveStates[p.id] === true && p.alive === false) {
-            const head = p.snake[0];
-            createExplosion(
-                head.x * renderGridSize + renderGridSize / 2,
-                head.y * renderGridSize + renderGridSize / 2,
-                p.color,
-                30
-            );
+            const head = (p.segments && p.segments.length > 0) ? p.segments[0] : {x: p.x, y: p.y};
+            createExplosion(head.x, head.y, p.color, 30);
         }
         previousAliveStates[p.id] = p.alive;
     });
@@ -304,353 +252,246 @@ function updateLeaderboard() {
     .join("");
 }
 
+// Camera state
+let cameraX = 0;
+let cameraY = 0;
+
 function draw() {
-  if (!gameState) return;
+    if (!gameState) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const me = gameState.players[myId];
+    if (me && me.alive) {
+        // Smooth camera follow
+        cameraX = me.x - canvas.width / 2;
+        cameraY = me.y - canvas.height / 2;
+    }
 
-  // Calculate interpolation progress
-  const now = Date.now();
-  let progress = 1;
-  const tickDuration = lastUpdateTime - previousUpdateTime;
-  if (previousGameState && tickDuration > 0) {
-      progress = Math.min(1, (now - lastUpdateTime) / tickDuration);
-  }
+    ctx.save();
+    ctx.translate(-cameraX, -cameraY);
 
-  // Determine grid size based on viewport - we want to show ~25 tiles across the smallest dimension
-  renderGridSize = Math.max(15, Math.min(canvas.width, canvas.height) / 25);
-
-  // Calculate Target Camera Offset to center on player
-  const me = gameState.players[myId];
-  let targetOffsetX, targetOffsetY;
-
-  if (me && me.alive) {
-      const head = me.snake[0];
-      let headX = head.x;
-      let headY = head.y;
-      
-      if (previousGameState && previousGameState.players[myId] && previousGameState.players[myId].alive) {
-          const prevHead = previousGameState.players[myId].snake[0];
-          headX = lerpWrap(prevHead.x, head.x, progress, gameState.mapSize);
-          headY = lerpWrap(prevHead.y, head.y, progress, gameState.mapSize);
-      }
-
-      targetOffsetX = canvas.width / 2 - (headX * renderGridSize + renderGridSize / 2);
-      targetOffsetY = canvas.height / 2 - (headY * renderGridSize + renderGridSize / 2);
-  } else {
-      // Center of map if dead or spectating
-      targetOffsetX = canvas.width / 2 - (gameState.mapSize * renderGridSize) / 2;
-      targetOffsetY = canvas.height / 2 - (gameState.mapSize * renderGridSize) / 2;
-  }
-
-  // Smooth Camera Lerp
-  cameraOffsetX += (targetOffsetX - cameraOffsetX) * 0.1;
-  cameraOffsetY += (targetOffsetY - cameraOffsetY) * 0.1;
-
-  ctx.save();
-  ctx.translate(cameraOffsetX, cameraOffsetY);
-
-  const worldSize = gameState.mapSize * renderGridSize;
-
-  // Draw Grid
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= worldSize; i += renderGridSize) {
+    // Draw Grid background
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.lineWidth = 1;
+    const gridSize = 50;
+    const startX = Math.floor(cameraX / gridSize) * gridSize;
+    const startY = Math.floor(cameraY / gridSize) * gridSize;
+    
     ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i, worldSize);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, i);
-    ctx.lineTo(worldSize, i);
-    ctx.stroke();
-  }
-
-  // Draw World Border
-  ctx.strokeStyle = "rgba(0, 242, 255, 0.2)";
-  ctx.lineWidth = 4;
-  ctx.strokeRect(0, 0, worldSize, worldSize);
-
-  // Draw Food (Multiple)
-  if (gameState.foods) {
-    gameState.foods.forEach((food) => {
-      // FAST GLOW
-      ctx.fillStyle = "rgba(255, 0, 122, 0.2)";
-      ctx.beginPath();
-      ctx.arc(
-        food.x * renderGridSize + renderGridSize / 2, 
-        food.y * renderGridSize + renderGridSize / 2, 
-        renderGridSize * 0.8, 
-        0, Math.PI * 2
-      );
-      ctx.fill();
-
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "white";
-      ctx.font = `${renderGridSize * 0.8}px serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(
-        food.emoji,
-        food.x * renderGridSize + renderGridSize / 2,
-        food.y * renderGridSize + renderGridSize / 2,
-      );
-    });
-  }
-
-  // Draw Obstacles
-  if (gameState.obstacles) {
-    gameState.obstacles.forEach((obs) => {
-      // Remove expensive shadowBlur for static obstacles
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "#ff8800";
-      
-      // Outer subtle glow layer
-      ctx.globalAlpha = 0.3;
-      ctx.beginPath();
-      ctx.roundRect(
-        obs.x * renderGridSize - 2,
-        obs.y * renderGridSize - 2,
-        renderGridSize + 4,
-        renderGridSize + 4,
-        4,
-      );
-      ctx.fill();
-
-      // Solid core
-      ctx.globalAlpha = 1.0;
-      ctx.beginPath();
-      ctx.roundRect(
-        obs.x * renderGridSize + 1,
-        obs.y * renderGridSize + 1,
-        renderGridSize - 2,
-        renderGridSize - 2,
-        2,
-      );
-      ctx.fill();
-    });
-  }
-   // Draw Players
-  Object.values(gameState.players).forEach((player) => {
-    if (!player.alive) return;
-
-    player.snake.forEach((segment, index) => {
-      const isHead = index === 0;
-      const isMe = player.id === myId;
-
-      let drawX = segment.x;
-      let drawY = segment.y;
-
-      // Interpolate position
-      if (previousGameState && previousGameState.players[player.id] && previousGameState.players[player.id].alive) {
-          const prevSnake = previousGameState.players[player.id].snake;
-          if (prevSnake && prevSnake[index]) {
-              drawX = lerpWrap(prevSnake[index].x, segment.x, progress, gameState.mapSize);
-              drawY = lerpWrap(prevSnake[index].y, segment.y, progress, gameState.mapSize);
-          } else if (prevSnake && prevSnake.length > 0) {
-              // For new segments grown this tick, interpolate from the last known tail position
-              const lastPrevSegment = prevSnake[prevSnake.length - 1];
-              drawX = lerpWrap(lastPrevSegment.x, segment.x, progress, gameState.mapSize);
-              drawY = lerpWrap(lastPrevSegment.y, segment.y, progress, gameState.mapSize);
-          }
-      }
-
-      // Only add expensive shadow to the head when boosting to save massive FPS
-      ctx.shadowBlur = (isHead && player.isBoosting) ? 15 : 0;
-      ctx.shadowColor = player.color;
-      ctx.fillStyle = isHead ? player.color : `${player.color}99`;
-
-      ctx.beginPath();
-      ctx.roundRect(
-        drawX * renderGridSize + 1,
-        drawY * renderGridSize + 1,
-        renderGridSize - 2,
-        renderGridSize - 2,
-        2,
-      );
-      ctx.fill();
-
-      if (isHead) {
-        ctx.fillStyle = "white";
-        const eyeSize = renderGridSize / 5;
-        ctx.fillRect(
-          drawX * renderGridSize + renderGridSize / 2 - eyeSize / 2,
-          drawY * renderGridSize + renderGridSize / 2 - eyeSize / 2,
-          eyeSize,
-          eyeSize,
-        );
-
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = "black";
-        ctx.fillStyle = isMe ? "#fff" : "rgba(255, 255, 255, 0.7)";
-        ctx.font = `600 ${Math.max(10, renderGridSize * 0.6)}px Outfit`;
-        ctx.textAlign = "center";
-        ctx.fillText(
-          player.nickname,
-          drawX * renderGridSize + renderGridSize / 2,
-          drawY * renderGridSize - 8,
-        );
-
-        // Boost effect
-        if (player.isBoosting) {
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(
-            drawX * renderGridSize + renderGridSize / 2,
-            drawY * renderGridSize + renderGridSize / 2,
-            renderGridSize,
-            0,
-            Math.PI * 2,
-          );
-          ctx.stroke();
+    for (let x = startX; x < cameraX + canvas.width; x += gridSize) {
+        if (x >= 0 && x <= gameState.mapSize) {
+            ctx.moveTo(x, Math.max(0, cameraY));
+            ctx.lineTo(x, Math.min(gameState.mapSize, cameraY + canvas.height));
         }
-        ctx.shadowBlur = 0;
-      }
+    }
+    for (let y = startY; y < cameraY + canvas.height; y += gridSize) {
+        if (y >= 0 && y <= gameState.mapSize) {
+            ctx.moveTo(Math.max(0, cameraX), y);
+            ctx.lineTo(Math.min(gameState.mapSize, cameraX + canvas.width), y);
+        }
+    }
+    ctx.stroke();
 
-            if (isHead && isMe) {
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
-        });
+    // Map Border
+    ctx.strokeStyle = "rgba(0, 242, 255, 0.3)";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(0, 0, gameState.mapSize, gameState.mapSize);
+
+    // Draw Food
+    gameState.foods.forEach((food) => {
+        // Only draw if visible on screen
+        if (food.x > cameraX - 50 && food.x < cameraX + canvas.width + 50 &&
+            food.y > cameraY - 50 && food.y < cameraY + canvas.height + 50) {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "white";
+            ctx.font = `20px serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(food.emoji, food.x, food.y);
+        }
     });
+
+    // Draw Obstacles
+    gameState.obstacles.forEach((obs) => {
+        if (obs.x > cameraX - 50 && obs.x < cameraX + canvas.width + 50 &&
+            obs.y > cameraY - 50 && obs.y < cameraY + canvas.height + 50) {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "#ff8800";
+            ctx.fillStyle = "#ff8800";
+            ctx.beginPath();
+            ctx.roundRect(obs.x, obs.y, 40, 40, 5); // 40 is OBSTACLE_SIZE
+            ctx.fill();
+        }
+    });
+
+    // Draw Players
+    Object.values(gameState.players).forEach((player) => {
+        if (!player.alive || !player.segments) return;
+        
+        // Draw segments in reverse so head is on top
+        for (let i = player.segments.length - 1; i >= 0; i--) {
+            const segment = player.segments[i];
+            
+            // Frustum culling
+            if (segment.x < cameraX - 50 || segment.x > cameraX + canvas.width + 50 ||
+                segment.y < cameraY - 50 || segment.y > cameraY + canvas.height + 50) {
+                continue;
+            }
+
+            const isHead = i === 0;
+            const isMe = player.id === myId;
+            
+            ctx.shadowBlur = isHead ? (player.isBoosting ? 20 : 10) : 0;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = isHead ? player.color : `${player.color}99`;
+
+            ctx.beginPath();
+            ctx.arc(segment.x, segment.y, 15, 0, Math.PI * 2); // 15 is SNAKE_RADIUS
+            ctx.fill();
+
+            if (isHead) {
+                // Draw Eyes
+                ctx.fillStyle = "white";
+                const eyeOffset = 8;
+                const eyeAngle1 = player.angle - Math.PI / 4;
+                const eyeAngle2 = player.angle + Math.PI / 4;
+                
+                ctx.beginPath();
+                ctx.arc(segment.x + Math.cos(eyeAngle1) * eyeOffset, segment.y + Math.sin(eyeAngle1) * eyeOffset, 3, 0, Math.PI * 2);
+                ctx.arc(segment.x + Math.cos(eyeAngle2) * eyeOffset, segment.y + Math.sin(eyeAngle2) * eyeOffset, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw Name
+                ctx.shadowBlur = 4;
+                ctx.shadowColor = "black";
+                ctx.fillStyle = isMe ? "#fff" : "rgba(255, 255, 255, 0.7)";
+                ctx.font = `600 14px Outfit`;
+                ctx.textAlign = "center";
+                ctx.fillText(player.nickname, segment.x, segment.y - 25);
+
+                // Boost effect
+                if (player.isBoosting) {
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(segment.x, segment.y, 20, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+    });
+
+    // Draw Virtual Joystick
+    if (joystickActive) {
+        ctx.beginPath();
+        ctx.arc(joystickBaseX + cameraX, joystickBaseY + cameraY, 50, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.beginPath();
+        const me = gameState.players[myId];
+        const angle = me ? me.targetAngle : 0;
+        ctx.arc(joystickBaseX + cameraX + Math.cos(angle) * 30, joystickBaseY + cameraY + Math.sin(angle) * 30, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0, 242, 255, 0.5)";
+        ctx.fill();
+    }
 
     ctx.restore();
-
-    // Draw Minimap
-    // Make minimap smaller on mobile (max 80px) and a bit larger on desktop (max 120px)
-    const maxMinimapSize = canvas.width < 500 ? 75 : 120;
-    const minimapSize = Math.min(maxMinimapSize, canvas.width / 4);
-    const minimapPadding = 10;
-    const minimapX = canvas.width - minimapSize - minimapPadding;
-    const minimapY = minimapPadding;
-    const scale = minimapSize / gameState.mapSize;
-
-    // Minimap Background
-    ctx.fillStyle = "rgba(10, 10, 12, 0.8)";
-    ctx.strokeStyle = "rgba(0, 242, 255, 0.5)";
-    ctx.lineWidth = 1;
-    ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
-    ctx.strokeRect(minimapX, minimapY, minimapSize, minimapSize);
-
-    // Minimap Foods
-    ctx.fillStyle = "#ff007a";
-    if (gameState.foods) {
-        gameState.foods.forEach(f => {
-            ctx.fillRect(minimapX + f.x * scale, minimapY + f.y * scale, scale, scale);
-        });
-    }
-
-    // Minimap Obstacles
-    ctx.fillStyle = "#ff8800";
-    if (gameState.obstacles) {
-        gameState.obstacles.forEach(o => {
-            ctx.fillRect(minimapX + o.x * scale, minimapY + o.y * scale, scale, scale);
-        });
-    }
-
-    // Minimap Players
-    Object.values(gameState.players).forEach(p => {
-        if (!p.alive) return;
-        ctx.fillStyle = p.id === myId ? "#fff" : p.color;
-        p.snake.forEach(segment => {
-            ctx.fillRect(minimapX + segment.x * scale, minimapY + segment.y * scale, scale, scale);
-        });
-    });
 }
 
-// Mobile Control Event Listeners
-const ctrlUp = document.getElementById("ctrl-up");
-const ctrlDown = document.getElementById("ctrl-down");
-const ctrlLeft = document.getElementById("ctrl-left");
-const ctrlRight = document.getElementById("ctrl-right");
-const ctrlBoost = document.getElementById("ctrl-boost");
+// --- Smooth Movement Input ---
+let joystickActive = false;
+let joystickBaseX = 0;
+let joystickBaseY = 0;
 
-const setDirection = (dir) => socket.emit("direction", dir);
+// Mouse Tracking (Desktop)
+canvas.addEventListener('mousemove', (e) => {
+    if (joystickActive) return; // Ignore if using touch
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    // Angle is relative to center of screen (player head)
+    const dx = mouseX - canvas.width / 2;
+    const dy = mouseY - canvas.height / 2;
+    socket.emit("targetAngle", Math.atan2(dy, dx));
+});
 
-ctrlUp.addEventListener("touchstart", (e) => { e.preventDefault(); setDirection("up"); });
-ctrlDown.addEventListener("touchstart", (e) => { e.preventDefault(); setDirection("down"); });
-ctrlLeft.addEventListener("touchstart", (e) => { e.preventDefault(); setDirection("left"); });
-ctrlRight.addEventListener("touchstart", (e) => { e.preventDefault(); setDirection("right"); });
+// Floating Touch Joystick (Mobile)
+canvas.addEventListener('touchstart', (e) => {
+    // Only capture if touch is on left half of screen to leave right for boost
+    if (e.touches[0].clientX < window.innerWidth / 2) {
+        e.preventDefault();
+        joystickActive = true;
+        const rect = canvas.getBoundingClientRect();
+        joystickBaseX = e.touches[0].clientX - rect.left;
+        joystickBaseY = e.touches[0].clientY - rect.top;
+    }
+}, { passive: false });
 
-// Alternative mouse support for testing on desktop
-ctrlUp.addEventListener("mousedown", () => setDirection("up"));
-ctrlDown.addEventListener("mousedown", () => setDirection("down"));
-ctrlLeft.addEventListener("mousedown", () => setDirection("left"));
-ctrlRight.addEventListener("mousedown", () => setDirection("right"));
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault(); // Prevent scrolling
+    if (!joystickActive) return;
+    
+    // Find the touch that started the joystick
+    let touch = null;
+    for(let i=0; i<e.touches.length; i++){
+        if (e.touches[i].clientX < window.innerWidth / 2 || e.touches.length === 1) {
+            touch = e.touches[i];
+            break;
+        }
+    }
+    if (!touch) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const currentX = touch.clientX - rect.left;
+    const currentY = touch.clientY - rect.top;
+    
+    const dx = currentX - joystickBaseX;
+    const dy = currentY - joystickBaseY;
+    
+    if (Math.hypot(dx, dy) > 10) { 
+        socket.emit("targetAngle", Math.atan2(dy, dx));
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+    // Check if joystick touch ended
+    let hasLeftTouch = false;
+    for(let i=0; i<e.touches.length; i++){
+        if (e.touches[i].clientX < window.innerWidth / 2) {
+            hasLeftTouch = true;
+        }
+    }
+    if (!hasLeftTouch) {
+        joystickActive = false;
+    }
+}, { passive: false });
 
 const setBoost = (active) => socket.emit("boost", active);
 
-ctrlBoost.addEventListener("touchstart", (e) => { e.preventDefault(); setBoost(true); });
-ctrlBoost.addEventListener("touchend", (e) => { e.preventDefault(); setBoost(false); });
-ctrlBoost.addEventListener("mousedown", () => setBoost(true));
-ctrlBoost.addEventListener("mouseup", () => setBoost(false));
-
-// Swipe Detection
-let touchStartX = 0;
-let touchStartY = 0;
-
-canvas.addEventListener("touchstart", (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-}, { passive: false });
-
-canvas.addEventListener("touchmove", (e) => {
-    e.preventDefault(); // Prevent scrolling while playing
-}, { passive: false });
-
-canvas.addEventListener("touchend", (e) => {
-    const touchEndX = e.changedTouches[0].clientX;
-    const touchEndY = e.changedTouches[0].clientY;
-    
-    const dx = touchEndX - touchStartX;
-    const dy = touchEndY - touchStartY;
-    
-    if (Math.abs(dx) > Math.abs(dy)) {
-        if (Math.abs(dx) > 30) {
-            setDirection(dx > 0 ? "right" : "left");
-        }
-    } else {
-        if (Math.abs(dy) > 30) {
-            setDirection(dy > 0 ? "down" : "up");
-        }
-    }
-}, { passive: false });
+// Boost button for mobile
+const ctrlBoost = document.getElementById("ctrl-boost");
+if (ctrlBoost) {
+    ctrlBoost.addEventListener("touchstart", (e) => { e.preventDefault(); setBoost(true); });
+    ctrlBoost.addEventListener("touchend", (e) => { e.preventDefault(); setBoost(false); });
+    ctrlBoost.addEventListener("mousedown", () => setBoost(true));
+    ctrlBoost.addEventListener("mouseup", () => setBoost(false));
+}
 
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Shift") socket.emit("boost", true);
-
-  let dir = null;
-  switch (e.key) {
-    case "ArrowUp":
-    case "w":
-    case "W":
-      dir = "up";
-      break;
-    case "ArrowDown":
-    case "s":
-    case "S":
-      dir = "down";
-      break;
-    case "ArrowLeft":
-    case "a":
-    case "A":
-      dir = "left";
-      break;
-    case "ArrowRight":
-    case "d":
-    case "D":
-      dir = "right";
-      break;
-    case " ":
+  if (e.key === "Shift" || e.key === " ") socket.emit("boost", true);
+  
+  if (e.key === "Enter") {
       const me = gameState?.players[myId];
       if (me && !me.alive) socket.emit("restart");
-      break;
   }
-  if (dir) socket.emit("direction", dir);
 });
 
 window.addEventListener("keyup", (e) => {
-  if (e.key === "Shift") socket.emit("boost", false);
+  if (e.key === "Shift" || e.key === " ") socket.emit("boost", false);
 });
 
 startBtn.addEventListener("click", () => {
