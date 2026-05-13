@@ -227,7 +227,12 @@ io.on("connection", (socket) => {
       isBoosting: false,
       alive: true,
     };
-    socket.emit("joined", { id: socket.id, color: players[socket.id].color });
+    socket.emit("joined", { 
+      id: socket.id, 
+      color: players[socket.id].color,
+      obstacles: obstacles,
+      mapSize: MAP_SIZE
+    });
   });
 
   socket.on("direction", (dir) => {
@@ -374,8 +379,6 @@ setInterval(() => {
   io.emit("gameUpdate", {
     players,
     foods,
-    obstacles,
-    mapSize: MAP_SIZE,
     globalHighScore,
     globalHighScoreName,
   });

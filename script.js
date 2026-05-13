@@ -35,6 +35,8 @@ let previousAliveStates = {};
 let cameraOffsetX = 0;
 let cameraOffsetY = 0;
 let renderGridSize = 20;
+let mapSize = 50; // Updated by server on join
+let serverObstacles = [];
 
 // Initialize Canvas
 function resizeCanvas() {
@@ -88,9 +90,12 @@ socket.on("authError", (msg) => {
   showError(msg);
 });
 
-socket.on("joined", ({ id, color }) => {
+socket.on("joined", ({ id, color, obstacles, mapSize: serverMapSize }) => {
   myId = id;
   myColor = color;
+  serverObstacles = obstacles || [];
+  mapSize = serverMapSize || 50;
+  
   joinScreen.classList.add("hidden");
   gameMain.classList.remove("hidden");
   joinError.classList.add("hidden");
@@ -112,7 +117,10 @@ socket.on("killEvent", ({ killer, victim, color }) => {
 
 socket.on("gameUpdate", (state) => {
   gameState = state;
-  if (canvas.width === 0) resizeCanvas(state.mapSize);
+  gameState.mapSize = mapSize;
+  gameState.obstacles = serverObstacles;
+  
+  if (canvas.width === 0) resizeCanvas();
 
   const me = state.players[myId];
   if (me) {
@@ -181,15 +189,18 @@ class Particle {
     }
 
     draw(ctx) {
-        ctx.save();
-        ctx.globalAlpha = this.life;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.color;
+        // FAST GLOW: Draw a larger semi-transparent circle instead of using slow shadowBlur
         ctx.fillStyle = this.color;
+        
+        ctx.globalAlpha = this.life * 0.3;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = this.life;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fill();
-        ctx.restore();
     }
 }
 
@@ -322,8 +333,19 @@ function draw() {
   // Draw Food (Multiple)
   if (gameState.foods) {
     gameState.foods.forEach((food) => {
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = "white";
+      // FAST GLOW
+      ctx.fillStyle = "rgba(255, 0, 122, 0.2)";
+      ctx.beginPath();
+      ctx.arc(
+        food.x * renderGridSize + renderGridSize / 2, 
+        food.y * renderGridSize + renderGridSize / 2, 
+        renderGridSize * 0.8, 
+        0, Math.PI * 2
+      );
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "white";
       ctx.font = `${renderGridSize * 0.8}px serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -336,20 +358,37 @@ function draw() {
   }
 
   // Draw Obstacles
-  gameState.obstacles.forEach((obs) => {
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = "#ff8800";
-    ctx.fillStyle = "#ff8800";
-    ctx.beginPath();
-    ctx.roundRect(
-      obs.x * renderGridSize + 1,
-      obs.y * renderGridSize + 1,
-      renderGridSize - 2,
-      renderGridSize - 2,
-      2,
-    );
-    ctx.fill();
-  });
+  if (gameState.obstacles) {
+    gameState.obstacles.forEach((obs) => {
+      // Remove expensive shadowBlur for static obstacles
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#ff8800";
+      
+      // Outer subtle glow layer
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.roundRect(
+        obs.x * renderGridSize - 2,
+        obs.y * renderGridSize - 2,
+        renderGridSize + 4,
+        renderGridSize + 4,
+        4,
+      );
+      ctx.fill();
+
+      // Solid core
+      ctx.globalAlpha = 1.0;
+      ctx.beginPath();
+      ctx.roundRect(
+        obs.x * renderGridSize + 1,
+        obs.y * renderGridSize + 1,
+        renderGridSize - 2,
+        renderGridSize - 2,
+        2,
+      );
+      ctx.fill();
+    });
+  }
 
   // Draw Players
   Object.values(gameState.players).forEach((player) => {
@@ -359,7 +398,8 @@ function draw() {
       const isHead = index === 0;
       const isMe = player.id === myId;
 
-      ctx.shadowBlur = isHead ? (player.isBoosting ? 20 : 10) : 0;
+      // Only add expensive shadow to the head when boosting to save massive FPS
+      ctx.shadowBlur = (isHead && player.isBoosting) ? 15 : 0;
       ctx.shadowColor = player.color;
       ctx.fillStyle = isHead ? player.color : `${player.color}99`;
 
