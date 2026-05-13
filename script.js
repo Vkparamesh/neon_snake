@@ -32,6 +32,9 @@ let respawnTimer = null;
 let particles = [];
 let previousFoods = [];
 let previousAliveStates = {};
+let cameraOffsetX = 0;
+let cameraOffsetY = 0;
+let renderGridSize = 20;
 
 // Initialize Canvas
 function resizeCanvas() {
@@ -40,12 +43,8 @@ function resizeCanvas() {
   
   // Use a small delay to ensure clientWidth/Height are updated
   setTimeout(() => {
-    const availableWidth = wrapper.clientWidth - 20;
-    const availableHeight = wrapper.clientHeight - 20;
-    const size = Math.min(availableWidth, availableHeight);
-
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = wrapper.clientWidth - 10;
+    canvas.height = wrapper.clientHeight - 10;
     
     if (gameState) draw();
   }, 50);
@@ -149,11 +148,14 @@ function animate() {
     draw(); // Draw game state
     
     // Update and Draw Particles
+    ctx.save();
+    ctx.translate(cameraOffsetX, cameraOffsetY);
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => {
         p.update();
         p.draw(ctx);
     });
+    ctx.restore();
     
     requestAnimationFrame(animate);
 }
@@ -198,7 +200,7 @@ function createExplosion(x, y, color, count = 15) {
 }
 
 function detectEffects(state) {
-    const renderGridSize = canvas.width / state.mapSize;
+    // renderGridSize is managed globally by draw()
 
     // Food Eaten Detection
     if (previousFoods.length > 0) {
@@ -272,22 +274,50 @@ function updateLeaderboard() {
 function draw() {
   if (!gameState) return;
 
-  const renderGridSize = canvas.width / gameState.mapSize;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Determine grid size based on viewport - we want to show ~25 tiles across the smallest dimension
+  renderGridSize = Math.max(15, Math.min(canvas.width, canvas.height) / 25);
+
+  // Calculate Target Camera Offset to center on player
+  const me = gameState.players[myId];
+  let targetOffsetX, targetOffsetY;
+
+  if (me && me.alive) {
+      const head = me.snake[0];
+      targetOffsetX = canvas.width / 2 - (head.x * renderGridSize + renderGridSize / 2);
+      targetOffsetY = canvas.height / 2 - (head.y * renderGridSize + renderGridSize / 2);
+  } else {
+      // Center of map if dead or spectating
+      targetOffsetX = canvas.width / 2 - (gameState.mapSize * renderGridSize) / 2;
+      targetOffsetY = canvas.height / 2 - (gameState.mapSize * renderGridSize) / 2;
+  }
+
+  // Smooth Camera Lerp
+  cameraOffsetX += (targetOffsetX - cameraOffsetX) * 0.1;
+  cameraOffsetY += (targetOffsetY - cameraOffsetY) * 0.1;
+
+  ctx.save();
+  ctx.translate(cameraOffsetX, cameraOffsetY);
+
+  const worldSize = gameState.mapSize * renderGridSize;
 
   // Draw Grid
   ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
   ctx.lineWidth = 1;
-  for (let i = 0; i <= canvas.width; i += renderGridSize) {
+  for (let i = 0; i <= worldSize; i += renderGridSize) {
     ctx.beginPath();
     ctx.moveTo(i, 0);
-    ctx.lineTo(i, canvas.height);
+    ctx.lineTo(i, worldSize);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(0, i);
-    ctx.lineTo(canvas.width, i);
+    ctx.lineTo(worldSize, i);
     ctx.stroke();
   }
+
+  // Draw World Border
+  ctx.strokeStyle = "rgba(0, 242, 255, 0.2)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(0, 0, worldSize, worldSize);
 
   // Draw Food (Multiple)
   if (gameState.foods) {
@@ -388,6 +418,8 @@ function draw() {
             }
         });
     });
+
+    ctx.restore();
 }
 
 // Mobile Control Event Listeners
